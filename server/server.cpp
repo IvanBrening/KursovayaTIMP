@@ -66,9 +66,11 @@ public:
 };
 
 // Класс для подключения к базе данных
-class ConnectToBase {
+class DatabaseConnector {
 public:
-    bool authenticateUser(const std::string& login, const std::string& salt, const std::string& clientHash, const std::string& dbFileName) {
+    DatabaseConnector(const std::string& dbFileName) : dbFileName(dbFileName) {}
+
+    bool authenticateUser(const std::string& login, const std::string& salt, const std::string& clientHash) {
         std::ifstream dbFile(dbFileName);
         if (!dbFile.is_open()) {
             std::cerr << "Не удалось открыть базу данных пользователей." << std::endl;
@@ -79,14 +81,7 @@ public:
         while (dbFile >> dbLogin >> dbPassword) {
             if (dbLogin == login) {
                 std::string serverHash = hashPassword(dbPassword, salt);
-
-                // Преобразуем хэши в нижний регистр
-                std::string clientHashLower = clientHash;
-                std::transform(clientHashLower.begin(), clientHashLower.end(), clientHashLower.begin(), ::tolower);
-                std::string serverHashLower = serverHash;
-                std::transform(serverHashLower.begin(), serverHashLower.end(), serverHashLower.begin(), ::tolower);
-
-                return serverHashLower == clientHashLower;
+                return compareHashes(clientHash, serverHash);
             }
         }
         dbFile.close();
@@ -94,6 +89,8 @@ public:
     }
 
 private:
+    std::string dbFileName;
+
     std::string hashPassword(const std::string& password, const std::string& salt) {
         std::string data = salt + password;
         unsigned char result[SHA_DIGEST_LENGTH];
@@ -105,15 +102,25 @@ private:
         }
         return hashStream.str();
     }
+
+    bool compareHashes(const std::string& clientHash, const std::string& serverHash) {
+        std::string clientHashLower = clientHash;
+        std::transform(clientHashLower.begin(), clientHashLower.end(), clientHashLower.begin(), ::tolower);
+        
+        std::string serverHashLower = serverHash;
+        std::transform(serverHashLower.begin(), serverHashLower.end(), serverHashLower.begin(), ::tolower);
+
+        return serverHashLower == clientHashLower;
+    }
 };
+
 // Класс для интерфейса сервера
-class Interface {
+class ServerInterface {
 public:
-    void printUsage() {
+    void printUsage() const {
         std::cout << "Использование: ./server <log_file> <user_db> <порт (если не 22852)>\n";
     }
-    
-    void logError(const std::string& logFileName, const std::string& message, bool isCritical) {
+void logError(const std::string& logFileName, const std::string& message, bool isCritical) const {
         std::ofstream logFile(logFileName, std::ios::app);
         if (logFile.is_open()) {
             std::time_t currentTime = std::time(nullptr);
@@ -126,14 +133,16 @@ public:
 };
 
 // Класс для взаимодействия с клиентом
-class ClientCommunicate {
+class ClientCommunicator {
 public:
-    void communicate(int socket, const std::string& userDbFileName, const std::string& logFileName) {
+    ClientCommunicator(const std::string& userDbFileName, const std::string& logFileName)
+        : dbConnector(userDbFileName), serverInterface(), logFileName(logFileName) {}
+
+    void communicate(int socket) {
         char buffer[256] = {0};
         read(socket, buffer, 255);
 
         std::string receivedData(buffer);
-
         int saltLength = 16;
         int hashLength = 40;
         int loginLength = receivedData.size() - saltLength - hashLength;
@@ -142,22 +151,85 @@ public:
         std::string salt = receivedData.substr(loginLength, saltLength);
         std::string clientHash = receivedData.substr(loginLength + saltLength, hashLength);
 
-        ConnectToBase dbConnection;
-        Interface interface;
-
-        if (dbConnection.authenticateUser(login, salt, clientHash, userDbFileName)) {
+        if (dbConnector.authenticateUser(login, salt, clientHash)) {
             send(socket, "OK", 2, 0);
             Calculator calc;
             calc.processVectors(socket);
         } else {
-            interface.logError(logFileName, "Ошибка аутентификации пользователя " + login, false);
+            serverInterface.logError(logFileName, "Ошибка аутентификации пользователя " + login, false);
             send(socket, "ERR", 3, 0);
         }
     }
+
+private:
+    DatabaseConnector dbConnector;
+    ServerInterface serverInterface;
+    std::string logFileName; // Добавлено поле для имени файла лога
+};
+
+class Server {
+public:
+    Server(int port, const std::string& logFileName, const std::string& userDbFileName) 
+        : port(port), logFileName(logFileName), userDbFileName(userDbFileName) {}
+
+    void start() {
+        setupServer();
+        listenForConnections();
+    }
+
+private:
+    int port;
+    std::string logFileName;
+    std::string userDbFileName;
+
+    void setupServer() {
+        int opt = 1;
+        server_fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (server_fd < 0) {
+            logError("Ошибка создания сокета", true);
+        }
+
+        setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt));
+
+        struct sockaddr_in address;
+        address.sin_family = AF_INET;
+        address.sin_addr.s_addr = INADDR_ANY;
+        address.sin_port = htons(port);
+
+        if (bind(server_fd, (struct sockaddr*)&address, sizeof(address)) < 0) {
+            logError("Ошибка привязки", true);
+        }
+
+        if (listen(server_fd, 3) < 0) {
+            logError("Ошибка прослушивания", true);
+        }
+
+        std::cout << "Сервер запущен и слушает на порту " << port << std::endl;
+    }
+
+    void listenForConnections() {
+        struct sockaddr_in address;
+        int addrlen = sizeof(address);
+        int new_socket;
+
+        while ((new_socket = accept(server_fd, (struct sockaddr*)&address, (socklen_t*)&addrlen)) >= 0) {
+            ClientCommunicator clientComm(userDbFileName, logFileName);
+            clientComm.communicate(new_socket);
+            close(new_socket);
+        }
+
+        close(server_fd);
+    }
+
+    void logError(const std::string& message, bool isCritical) const {
+        ServerInterface().logError(logFileName, message, isCritical);
+    }
+
+    int server_fd;
 };
 
 int main(int argc, char* argv[]) {
-    Interface interface;
+    ServerInterface interface;
     if (argc < 3 || (argc == 2 && std::string(argv[1]) == "-h")) {
         interface.printUsage();
         return 1;
@@ -167,43 +239,8 @@ int main(int argc, char* argv[]) {
     std::string userDbFileName = argv[2];
     int port = (argc == 4) ? std::stoi(argv[3]) : 22852;
 
-    int server_fd, new_socket;
-    struct sockaddr_in address;
-    int opt = 1;
-    int addrlen = sizeof(address);
+    Server server(port, logFileName, userDbFileName);
+    server.start();
 
-    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
-        interface.logError(logFileName, "Ошибка создания сокета", true);
-        return -1;
-    }
-
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
-        interface.logError(logFileName, "Ошибка setsockopt", true);
-        return -1;
-    }
-
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(port);
-
-    if (bind(server_fd, (struct sockaddr*)&address, sizeof(address)) < 0) {
-        interface.logError(logFileName, "Ошибка привязки", true);
-        return -1;
-    }
-
-    if (listen(server_fd, 3) < 0) {
-        interface.logError(logFileName, "Ошибка прослушивания", true);
-        return -1;
-    }
-
-    std::cout << "Сервер запущен и слушает на порту " << port << std::endl;
-
-    while ((new_socket = accept(server_fd, (struct sockaddr*)&address, (socklen_t*)&addrlen)) >= 0) {
-        ClientCommunicate clientComm;
-        clientComm.communicate(new_socket, userDbFileName, logFileName);
-        close(new_socket);
-    }
-
-    close(server_fd);
     return 0;
 }
