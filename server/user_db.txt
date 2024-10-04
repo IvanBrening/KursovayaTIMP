@@ -1,1 +1,2 @@
-user password
+user P@ssW0rd
+admin 12345
