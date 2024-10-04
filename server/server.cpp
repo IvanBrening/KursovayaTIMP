@@ -116,7 +116,7 @@ private:
 class Interface {
 public:
     void printUsage() {
-        std::cout << "Использование: ./server <log_file> <user_db> <порт (если не 22852)>\n";
+        std::cout << "Использование: ./server log_file user_db [порт (по умолчанию 22852)] \n";
     }
 
     void logError(const std::string& logFileName, const std::string& message, bool isCritical) {
