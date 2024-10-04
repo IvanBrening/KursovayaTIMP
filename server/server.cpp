@@ -19,20 +19,26 @@ public:
         uint32_t numberOfVectors;
 
         // Получаем количество векторов
-        recv(socket, &numberOfVectors, sizeof(uint32_t), 0);
+        if (recv(socket, &numberOfVectors, sizeof(uint32_t), 0) <= 0) {
+            return -1; // Возвращаем -1 в случае ошибки
+        }
         numberOfVectors = ntohl(numberOfVectors); // Преобразуем в сетевой порядок
 
         for (uint32_t i = 0; i < numberOfVectors; ++i) {
             uint32_t vectorSize;
 
             // Получаем размер вектора
-            recv(socket, &vectorSize, sizeof(uint32_t), 0);
+            if (recv(socket, &vectorSize, sizeof(uint32_t), 0) <= 0) {
+                return -1; // Возвращаем -1 в случае ошибки
+            }
             vectorSize = ntohl(vectorSize); // Преобразуем в сетевой порядок
 
             std::vector<uint16_t> vector(vectorSize);
 
             // Получаем значения вектора
-            recv(socket, vector.data(), vectorSize * sizeof(uint16_t), 0);
+            if (recv(socket, vector.data(), vectorSize * sizeof(uint16_t), 0) <= 0) {
+                return -1; // Возвращаем -1 в случае ошибки
+            }
 
             uint32_t sumOfSquares = 0;
             bool overflow = false;
@@ -66,11 +72,9 @@ public:
 };
 
 // Класс для подключения к базе данных
-class DatabaseConnector {
+class ConnectToBase {
 public:
-    DatabaseConnector(const std::string& dbFileName) : dbFileName(dbFileName) {}
-
-    bool authenticateUser(const std::string& login, const std::string& salt, const std::string& clientHash) {
+    bool authenticateUser(const std::string& login, const std::string& salt, const std::string& clientHash, const std::string& dbFileName) {
         std::ifstream dbFile(dbFileName);
         if (!dbFile.is_open()) {
             std::cerr << "Не удалось открыть базу данных пользователей." << std::endl;
@@ -81,7 +85,14 @@ public:
         while (dbFile >> dbLogin >> dbPassword) {
             if (dbLogin == login) {
                 std::string serverHash = hashPassword(dbPassword, salt);
-                return compareHashes(clientHash, serverHash);
+
+                // Преобразуем хэши в нижний регистр
+                std::string clientHashLower = clientHash;
+                std::transform(clientHashLower.begin(), clientHashLower.end(), clientHashLower.begin(), ::tolower);
+                std::string serverHashLower = serverHash;
+                std::transform(serverHashLower.begin(), serverHashLower.end(), serverHashLower.begin(), ::tolower);
+
+                return serverHashLower == clientHashLower;
             }
         }
         dbFile.close();
@@ -89,8 +100,6 @@ public:
     }
 
 private:
-    std::string dbFileName;
-
     std::string hashPassword(const std::string& password, const std::string& salt) {
         std::string data = salt + password;
         unsigned char result[SHA_DIGEST_LENGTH];
@@ -102,25 +111,15 @@ private:
         }
         return hashStream.str();
     }
-
-    bool compareHashes(const std::string& clientHash, const std::string& serverHash) {
-        std::string clientHashLower = clientHash;
-        std::transform(clientHashLower.begin(), clientHashLower.end(), clientHashLower.begin(), ::tolower);
-        
-        std::string serverHashLower = serverHash;
-        std::transform(serverHashLower.begin(), serverHashLower.end(), serverHashLower.begin(), ::tolower);
-
-        return serverHashLower == clientHashLower;
-    }
 };
-
 // Класс для интерфейса сервера
-class ServerInterface {
+class Interface {
 public:
-    void printUsage() const {
+    void printUsage() {
         std::cout << "Использование: ./server <log_file> <user_db> <порт (если не 22852)>\n";
     }
-void logError(const std::string& logFileName, const std::string& message, bool isCritical) const {
+
+    void logError(const std::string& logFileName, const std::string& message, bool isCritical) {
         std::ofstream logFile(logFileName, std::ios::app);
         if (logFile.is_open()) {
             std::time_t currentTime = std::time(nullptr);
@@ -133,16 +132,17 @@ void logError(const std::string& logFileName, const std::string& message, bool i
 };
 
 // Класс для взаимодействия с клиентом
-class ClientCommunicator {
+class ClientCommunicate {
 public:
-    ClientCommunicator(const std::string& userDbFileName, const std::string& logFileName)
-        : dbConnector(userDbFileName), serverInterface(), logFileName(logFileName) {}
-
-    void communicate(int socket) {
+    void communicate(int socket, const std::string& userDbFileName, const std::string& logFileName) {
         char buffer[256] = {0};
-        read(socket, buffer, 255);
+        if (recv(socket, buffer, sizeof(buffer) - 1, 0) <= 0) {
+            return; // Возвращаем, если произошла ошибка
+        }
+        buffer[sizeof(buffer) - 1] = '\0'; // Обеспечиваем корректное завершение строки
 
         std::string receivedData(buffer);
+
         int saltLength = 16;
         int hashLength = 40;
         int loginLength = receivedData.size() - saltLength - hashLength;
@@ -151,85 +151,24 @@ public:
         std::string salt = receivedData.substr(loginLength, saltLength);
         std::string clientHash = receivedData.substr(loginLength + saltLength, hashLength);
 
-        if (dbConnector.authenticateUser(login, salt, clientHash)) {
+        ConnectToBase dbConnection;
+        Interface interface;
+
+        if (dbConnection.authenticateUser(login, salt, clientHash, userDbFileName)) {
             send(socket, "OK", 2, 0);
             Calculator calc;
-            calc.processVectors(socket);
+            if (calc.processVectors(socket) < 0) {
+                std::cerr << "Ошибка обработки векторов." << std::endl;
+            }
         } else {
-            serverInterface.logError(logFileName, "Ошибка аутентификации пользователя " + login, false);
+            interface.logError(logFileName, "Ошибка аутентификации пользователя " + login, false);
             send(socket, "ERR", 3, 0);
         }
     }
-
-private:
-    DatabaseConnector dbConnector;
-    ServerInterface serverInterface;
-    std::string logFileName; // Добавлено поле для имени файла лога
-};
-
-class Server {
-public:
-    Server(int port, const std::string& logFileName, const std::string& userDbFileName) 
-        : port(port), logFileName(logFileName), userDbFileName(userDbFileName) {}
-
-    void start() {
-        setupServer();
-        listenForConnections();
-    }
-
-private:
-    int port;
-    std::string logFileName;
-    std::string userDbFileName;
-
-    void setupServer() {
-        int opt = 1;
-        server_fd = socket(AF_INET, SOCK_STREAM, 0);
-        if (server_fd < 0) {
-            logError("Ошибка создания сокета", true);
-        }
-
-        setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt));
-
-        struct sockaddr_in address;
-        address.sin_family = AF_INET;
-        address.sin_addr.s_addr = INADDR_ANY;
-        address.sin_port = htons(port);
-
-        if (bind(server_fd, (struct sockaddr*)&address, sizeof(address)) < 0) {
-            logError("Ошибка привязки", true);
-        }
-
-        if (listen(server_fd, 3) < 0) {
-            logError("Ошибка прослушивания", true);
-        }
-
-        std::cout << "Сервер запущен и слушает на порту " << port << std::endl;
-    }
-
-    void listenForConnections() {
-        struct sockaddr_in address;
-        int addrlen = sizeof(address);
-        int new_socket;
-
-        while ((new_socket = accept(server_fd, (struct sockaddr*)&address, (socklen_t*)&addrlen)) >= 0) {
-            ClientCommunicator clientComm(userDbFileName, logFileName);
-            clientComm.communicate(new_socket);
-            close(new_socket);
-        }
-
-        close(server_fd);
-    }
-
-    void logError(const std::string& message, bool isCritical) const {
-        ServerInterface().logError(logFileName, message, isCritical);
-    }
-
-    int server_fd;
 };
 
 int main(int argc, char* argv[]) {
-    ServerInterface interface;
+    Interface interface;
     if (argc < 3 || (argc == 2 && std::string(argv[1]) == "-h")) {
         interface.printUsage();
         return 1;
@@ -239,8 +178,62 @@ int main(int argc, char* argv[]) {
     std::string userDbFileName = argv[2];
     int port = (argc == 4) ? std::stoi(argv[3]) : 22852;
 
-    Server server(port, logFileName, userDbFileName);
-    server.start();
+    int server_fd, new_socket;
+    struct sockaddr_in address;
+    int opt = 1;
+    int addrlen = sizeof(address);
 
+    // Создание сокета
+    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
+        interface.logError(logFileName, "Ошибка создания сокета", true);
+        return -1;
+    }
+
+    // Установка параметров сокета
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
+        interface.logError(logFileName, "Ошибка setsockopt", true);
+        return -1;
+    }
+
+    // Указание параметров адреса
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(port);
+
+    // Привязка сокета к адресу
+    if (bind(server_fd, (struct sockaddr*)&address, sizeof(address)) < 0) {
+        interface.logError(logFileName, "Ошибка привязки", true);
+        return -1;
+    }
+
+    // Начало прослушивания
+    if (listen(server_fd, 3) < 0) {
+        interface.logError(logFileName, "Ошибка прослушивания", true);
+        return -1;
+    }
+
+    std::cout << "Сервер запущен и слушает на порту " << port << std::endl;
+
+    // Основной цикл ожидания подключения клиентов
+    while (true) {
+        std::cout << "Ожидание клиента..." << std::endl;
+
+        // Прием нового клиента
+        new_socket = accept(server_fd, (struct sockaddr*)&address, (socklen_t*)&addrlen);
+        if (new_socket < 0) {
+            interface.logError(logFileName, "Ошибка подключения", true);
+            continue; // Продолжаем ожидать новых клиентов в случае ошибки
+        }
+std::cout << "Клиент подключен" << std::endl;
+        ClientCommunicate client;
+        client.communicate(new_socket, userDbFileName, logFileName);
+
+        // Закрываем сокет клиента после завершения общения
+        close(new_socket);
+        std::cout << "Соединение с клиентом завершено" << std::endl;
+    }
+
+    // Закрытие серверного сокета
+    close(server_fd);
     return 0;
 }
