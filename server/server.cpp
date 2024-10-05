@@ -116,6 +116,32 @@ private:
     }
 };
 
+// Класс для работы с интерфейсом (логирование, использование)
+class Interface {
+public:
+    static void printUsage() {
+        std::cout << "Usage: ./server -l log_file -b user_db [-p port (default 22852)]\n";
+    }
+static void logError(const std::string& logFileName, const std::string& message, bool isCritical) {
+        std::ofstream logFile(logFileName, std::ios::app);
+        if (logFile.is_open()) {
+            std::time_t currentTime = std::time(nullptr);
+            logFile << std::put_time(std::localtime(&currentTime), "%Y-%m-%d %H:%M:%S")
+                    << " - " << (isCritical ? "Critical" : "Non-critical") << " error: "
+                    << message << std::endl;
+        }
+    }
+
+    static void logMessage(const std::string& logFileName, const std::string& message) {
+        std::ofstream logFile(logFileName, std::ios::app);
+        if (logFile.is_open()) {
+            std::time_t currentTime = std::time(nullptr);
+            logFile << std::put_time(std::localtime(&currentTime), "%Y-%m-%d %H:%M:%S")
+                    << " - Info: " << message << std::endl;
+        }
+    }
+};
+
 // Класс для взаимодействия с клиентом
 class ClientCommunicate {
 public:
@@ -127,7 +153,7 @@ public:
         buffer[sizeof(buffer) - 1] = '\0';
 
         std::string receivedData(buffer);
-int saltLength = 16;
+        int saltLength = 16;
         int hashLength = 40;
         int loginLength = receivedData.size() - saltLength - hashLength;
 
@@ -139,31 +165,14 @@ int saltLength = 16;
 
         if (dbConnection.authenticateUser(login, salt, clientHash, userDbFileName)) {
             send(socket, "OK", 2, 0);
+            Interface::logMessage(logFileName, "User " + login + " authenticated successfully.");
             Calculator calc;
             if (calc.processVectors(socket) < 0) {
-                Error::logError("Error processing vectors.");
+                Interface::logError(logFileName, "Error processing vectors.", false);
             }
         } else {
-            Error::logError("Authentication failed for user: " + login);
+            Interface::logError(logFileName, "Authentication failed for user: " + login, false);
             send(socket, "ERR", 3, 0);
-        }
-    }
-};
-
-// Класс для работы с интерфейсом (логирование, использование)
-class Interface {
-public:
-    void printUsage() {
-        std::cout << "Usage: ./server -l log_file -b user_db [-p port (default 22852)]\n";
-    }
-
-    void logError(const std::string& logFileName, const std::string& message, bool isCritical) {
-        std::ofstream logFile(logFileName, std::ios::app);
-        if (logFile.is_open()) {
-            std::time_t currentTime = std::time(nullptr);
-            logFile << std::put_time(std::localtime(&currentTime), "%Y-%m-%d %H:%M:%S")
-                    << " - " << (isCritical ? "Critical" : "Non-critical") << " error: "
-                    << message << std::endl;
         }
     }
 };
@@ -171,7 +180,7 @@ public:
 // Основная программа
 int main(int argc, char* argv[]) {
     if (argc < 5) {
-        Interface().printUsage();
+        Interface::printUsage();
         return 1;
     }
 
@@ -187,7 +196,7 @@ int main(int argc, char* argv[]) {
         } else if (std::string(argv[i]) == "-p") {
             port = std::stoi(argv[++i]);
         } else {
-            Interface().printUsage();
+            Interface::printUsage();
             return 1;
         }
     }
@@ -199,13 +208,13 @@ int main(int argc, char* argv[]) {
 
     // Создание сокета
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
-        Interface().logError(logFile, "Socket creation error", true);
+        Interface::logError(logFile, "Socket creation error", true);
         return -1;
     }
 
     // Установка параметров сокета
     if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
-        Interface().logError(logFile, "Setsockopt error", true);
+        Interface::logError(logFile, "Setsockopt error", true);
         return -1;
     }
 
@@ -216,38 +225,35 @@ int main(int argc, char* argv[]) {
 
     // Привязка сокета к адресу
     if (bind(server_fd, (struct sockaddr*)&address, sizeof(address)) < 0) {
-        Interface().logError(logFile, "Bind error", true);
+        Interface::logError(logFile, "Bind error", true);
         return -1;
     }
 
     // Начало прослушивания
     if (listen(server_fd, 3) < 0) {
-        Interface().logError(logFile, "Listen error", true);
+        Interface::logError(logFile, "Listen error", true);
         return -1;
     }
 
     std::cout << "Server started on port " << port << std::endl;
-
-    // Основной цикл ожидания подключения клиентов
+    Interface::logMessage(logFile, "Server started on port " + std::to_string(port));
+// Основной цикл ожидания подключения клиентов
     while (true) {
         std::cout << "Waiting for a client..." << std::endl;
+        Interface::logMessage(logFile, "Waiting for a client...");
 
-        // Прием нового клиента
-        new_socket = accept(server_fd, (struct sockaddr*)&address, (socklen_t*)&addrlen);
-        if (new_socket < 0) {
-            Interface().logError(logFile, "Client connection error", true);
+        if ((new_socket = accept(server_fd, (struct sockaddr*)&address, (socklen_t*)&addrlen)) < 0) {
+            Interface::logError(logFile, "Accept error", true);
             continue;
         }
 
+        std::cout << "Client connected!" << std::endl;
         ClientCommunicate clientComm;
         clientComm.communicate(new_socket, userDb, logFile);
 
-        // Закрываем сокет клиента после завершения общения
         close(new_socket);
-        std::cout << "Client connection closed" << std::endl;
     }
 
-    // Закрытие серверного сокета
     close(server_fd);
     return 0;
 }
