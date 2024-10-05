@@ -11,6 +11,16 @@
 #include <iomanip>
 #include <ctime>
 #include <algorithm>
+#include <stdexcept>
+#include <cstring>
+
+// Класс для обработки ошибок
+class Error {
+public:
+    static void logError(const std::string& message, bool isCritical = false) {
+        std::cerr << (isCritical ? "Critical Error: " : "Error: ") << message << std::endl;
+    }
+};
 
 // Класс для вычислений
 class Calculator {
@@ -18,53 +28,46 @@ public:
     uint16_t processVectors(int socket) {
         uint32_t numberOfVectors;
 
-        // Получаем количество векторов
         if (recv(socket, &numberOfVectors, sizeof(uint32_t), 0) <= 0) {
-            return -1; // Возвращаем -1 в случае ошибки
+            return -1;
         }
-        numberOfVectors = ntohl(numberOfVectors); // Преобразуем в сетевой порядок
+        numberOfVectors = ntohl(numberOfVectors);
 
         for (uint32_t i = 0; i < numberOfVectors; ++i) {
             uint32_t vectorSize;
 
-            // Получаем размер вектора
             if (recv(socket, &vectorSize, sizeof(uint32_t), 0) <= 0) {
-                return -1; // Возвращаем -1 в случае ошибки
+                return -1;
             }
-            vectorSize = ntohl(vectorSize); // Преобразуем в сетевой порядок
+            vectorSize = ntohl(vectorSize);
 
             std::vector<uint16_t> vector(vectorSize);
-
-            // Получаем значения вектора
             if (recv(socket, vector.data(), vectorSize * sizeof(uint16_t), 0) <= 0) {
-                return -1; // Возвращаем -1 в случае ошибки
+                return -1;
             }
 
             uint32_t sumOfSquares = 0;
             bool overflow = false;
 
             for (const auto& value : vector) {
-                // Проверяем на переполнение
                 if (sumOfSquares > (UINT16_MAX - value * value)) {
-                    overflow = true; // Устанавливаем флаг переполнения
+                    overflow = true;
                     break;
                 }
                 sumOfSquares += value * value;
             }
 
-            // Формируем результат
             uint32_t result;
             if (overflow) {
-                result = 1; // Переполнение вверх
+                result = 1;
             } else if (sumOfSquares > UINT16_MAX) {
-                result = UINT16_MAX; // Переполнение вниз
+                result = UINT16_MAX;
             } else {
                 result = static_cast<uint32_t>(sumOfSquares);
             }
 
-            // Отправляем результат обратно клиенту (4 байта, uint32_t)
-            uint32_t networkResult = htonl(result); // Преобразуем в сетевой порядок
-            send(socket, &networkResult, sizeof(uint32_t), 0); // Отправляем результат
+            uint32_t networkResult = htonl(result);
+            send(socket, &networkResult, sizeof(uint32_t), 0);
         }
 
         return 0;
@@ -77,7 +80,7 @@ public:
     bool authenticateUser(const std::string& login, const std::string& salt, const std::string& clientHash, const std::string& dbFileName) {
         std::ifstream dbFile(dbFileName);
         if (!dbFile.is_open()) {
-            std::cerr << "Не удалось открыть базу данных пользователей." << std::endl;
+            Error::logError("Cannot open database file.", true);
             return false;
         }
 
@@ -85,17 +88,9 @@ public:
         while (dbFile >> dbLogin >> dbPassword) {
             if (dbLogin == login) {
                 std::string serverHash = hashPassword(dbPassword, salt);
-
-                // Преобразуем хэши в нижний регистр
-                std::string clientHashLower = clientHash;
-                std::transform(clientHashLower.begin(), clientHashLower.end(), clientHashLower.begin(), ::tolower);
-                std::string serverHashLower = serverHash;
-                std::transform(serverHashLower.begin(), serverHashLower.end(), serverHashLower.begin(), ::tolower);
-
-                return serverHashLower == clientHashLower;
+                return compareHashes(serverHash, clientHash);
             }
         }
-        dbFile.close();
         return false;
     }
 
@@ -111,23 +106,13 @@ private:
         }
         return hashStream.str();
     }
-};
-// Класс для интерфейса сервера
-class Interface {
-public:
-    void printUsage() {
-        std::cout << "Использование: ./server log_file user_db [порт (по умолчанию 22852)] \n";
-    }
 
-    void logError(const std::string& logFileName, const std::string& message, bool isCritical) {
-        std::ofstream logFile(logFileName, std::ios::app);
-        if (logFile.is_open()) {
-            std::time_t currentTime = std::time(nullptr);
-            logFile << std::put_time(std::localtime(&currentTime), "%Y-%m-%d %H:%M:%S")
-                    << " - " << (isCritical ? "Критическая" : "Не критическая") << " ошибка: "
-                    << message << std::endl;
-            logFile.close();
-        }
+    bool compareHashes(const std::string& serverHash, const std::string& clientHash) {
+        std::string clientHashLower = clientHash;
+        std::string serverHashLower = serverHash;
+        std::transform(clientHashLower.begin(), clientHashLower.end(), clientHashLower.begin(), ::tolower);
+        std::transform(serverHashLower.begin(), serverHashLower.end(), serverHashLower.begin(), ::tolower);
+        return serverHashLower == clientHashLower;
     }
 };
 
@@ -137,13 +122,12 @@ public:
     void communicate(int socket, const std::string& userDbFileName, const std::string& logFileName) {
         char buffer[256] = {0};
         if (recv(socket, buffer, sizeof(buffer) - 1, 0) <= 0) {
-            return; // Возвращаем, если произошла ошибка
+            return;
         }
-        buffer[sizeof(buffer) - 1] = '\0'; // Обеспечиваем корректное завершение строки
+        buffer[sizeof(buffer) - 1] = '\0';
 
         std::string receivedData(buffer);
-
-        int saltLength = 16;
+int saltLength = 16;
         int hashLength = 40;
         int loginLength = receivedData.size() - saltLength - hashLength;
 
@@ -152,31 +136,61 @@ public:
         std::string clientHash = receivedData.substr(loginLength + saltLength, hashLength);
 
         ConnectToBase dbConnection;
-        Interface interface;
 
         if (dbConnection.authenticateUser(login, salt, clientHash, userDbFileName)) {
             send(socket, "OK", 2, 0);
             Calculator calc;
             if (calc.processVectors(socket) < 0) {
-                std::cerr << "Ошибка обработки векторов." << std::endl;
+                Error::logError("Error processing vectors.");
             }
         } else {
-            interface.logError(logFileName, "Ошибка аутентификации пользователя " + login, false);
+            Error::logError("Authentication failed for user: " + login);
             send(socket, "ERR", 3, 0);
         }
     }
 };
 
+// Класс для работы с интерфейсом (логирование, использование)
+class Interface {
+public:
+    void printUsage() {
+        std::cout << "Usage: ./server -l log_file -b user_db [-p port (default 22852)]\n";
+    }
+
+    void logError(const std::string& logFileName, const std::string& message, bool isCritical) {
+        std::ofstream logFile(logFileName, std::ios::app);
+        if (logFile.is_open()) {
+            std::time_t currentTime = std::time(nullptr);
+            logFile << std::put_time(std::localtime(&currentTime), "%Y-%m-%d %H:%M:%S")
+                    << " - " << (isCritical ? "Critical" : "Non-critical") << " error: "
+                    << message << std::endl;
+        }
+    }
+};
+
+// Основная программа
 int main(int argc, char* argv[]) {
-    Interface interface;
-    if (argc < 3 || (argc == 2 && std::string(argv[1]) == "-h")) {
-        interface.printUsage();
+    if (argc < 5) {
+        Interface().printUsage();
         return 1;
     }
 
-    std::string logFileName = argv[1];
-    std::string userDbFileName = argv[2];
-    int port = (argc == 4) ? std::stoi(argv[3]) : 22852;
+    std::string logFile;
+    std::string userDb;
+    int port = 22852;  // Значение порта по умолчанию
+
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "-l") {
+            logFile = argv[++i];
+        } else if (std::string(argv[i]) == "-b") {
+            userDb = argv[++i];
+        } else if (std::string(argv[i]) == "-p") {
+            port = std::stoi(argv[++i]);
+        } else {
+            Interface().printUsage();
+            return 1;
+        }
+    }
 
     int server_fd, new_socket;
     struct sockaddr_in address;
@@ -185,13 +199,13 @@ int main(int argc, char* argv[]) {
 
     // Создание сокета
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
-        interface.logError(logFileName, "Ошибка создания сокета", true);
+        Interface().logError(logFile, "Socket creation error", true);
         return -1;
     }
 
     // Установка параметров сокета
     if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
-        interface.logError(logFileName, "Ошибка setsockopt", true);
+        Interface().logError(logFile, "Setsockopt error", true);
         return -1;
     }
 
@@ -202,35 +216,35 @@ int main(int argc, char* argv[]) {
 
     // Привязка сокета к адресу
     if (bind(server_fd, (struct sockaddr*)&address, sizeof(address)) < 0) {
-        interface.logError(logFileName, "Ошибка привязки", true);
+        Interface().logError(logFile, "Bind error", true);
         return -1;
     }
 
     // Начало прослушивания
     if (listen(server_fd, 3) < 0) {
-        interface.logError(logFileName, "Ошибка прослушивания", true);
+        Interface().logError(logFile, "Listen error", true);
         return -1;
     }
 
-    std::cout << "Сервер запущен и слушает на порту " << port << std::endl;
+    std::cout << "Server started on port " << port << std::endl;
 
     // Основной цикл ожидания подключения клиентов
     while (true) {
-        std::cout << "Ожидание клиента..." << std::endl;
+        std::cout << "Waiting for a client..." << std::endl;
 
         // Прием нового клиента
         new_socket = accept(server_fd, (struct sockaddr*)&address, (socklen_t*)&addrlen);
         if (new_socket < 0) {
-            interface.logError(logFileName, "Ошибка подключения", true);
-            continue; // Продолжаем ожидать новых клиентов в случае ошибки
+            Interface().logError(logFile, "Client connection error", true);
+            continue;
         }
-std::cout << "Клиент подключен" << std::endl;
-        ClientCommunicate client;
-        client.communicate(new_socket, userDbFileName, logFileName);
+
+        ClientCommunicate clientComm;
+        clientComm.communicate(new_socket, userDb, logFile);
 
         // Закрываем сокет клиента после завершения общения
         close(new_socket);
-        std::cout << "Соединение с клиентом завершено" << std::endl;
+        std::cout << "Client connection closed" << std::endl;
     }
 
     // Закрытие серверного сокета
