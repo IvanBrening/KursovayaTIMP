@@ -6,11 +6,11 @@
 
 class Interface {
 public:
-    explicit Interface(const std::string& logFileName);
+    explicit Interface(const std::string& fileName);
     void logMessage(const std::string& message);
-    void logError(const std::string& errorMessage, bool critical);
+    void logError(const std::string& error, bool isCritical);
 private:
-    std::ofstream logFile;
+    std::string logFileName;
 };
 
 #endif // INTERFACE_H

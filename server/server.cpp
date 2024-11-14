@@ -54,7 +54,7 @@ public:
 
             for (const auto& value : vector) {
                 // Проверка на переполнение вверх
-                if (sumOfSquares > (UINT16_MAX - value * value)) {
+                if (sumOfSquares > static_cast<uint32_t>(UINT16_MAX) - static_cast<uint32_t>(value * value)) {
                     overflowUp = true;
                     break; // Прерываем, если произойдет переполнение
                 }

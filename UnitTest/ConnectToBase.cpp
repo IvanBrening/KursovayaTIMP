@@ -1,41 +1,38 @@
 #include "ConnectToBase.h"
 #include <fstream>
 #include <sstream>
-#include <openssl/sha.h>  // Подключение библиотеки OpenSSL для SHA-1
+#include <openssl/sha.h> // Подключаем для SHA-1
+#include <iomanip>
 
-ConnectToBase::ConnectToBase(const std::string& dbFileName) {
-    loadDatabase(dbFileName);  // Загружаем базу данных из файла
-}
+// Конструктор принимает имя файла базы данных
+ConnectToBase::ConnectToBase(const std::string& dbFileName) : dbFileName(dbFileName) {}
 
-void ConnectToBase::loadDatabase(const std::string& dbFileName) {
-    std::ifstream dbFile(dbFileName);
-    std::string line;
-    while (std::getline(dbFile, line)) {
-        std::istringstream iss(line);
-        std::string login, password;
-        if (iss >> login >> password) {
-            users[login] = password;  // Сохраняем логин и пароль в базе данных
-        }
-    }
-}
-
+// Метод для хэширования пароля с использованием соли
 std::string ConnectToBase::hashPassword(const std::string& password, const std::string& salt) {
-    std::string saltedPassword = salt + password;
-    unsigned char hash[SHA_DIGEST_LENGTH];
-    SHA1(reinterpret_cast<const unsigned char*>(saltedPassword.c_str()), saltedPassword.size(), hash);
-    
+    std::string combined = salt + password; // Соединяем соль и пароль
+
+    unsigned char hash[SHA_DIGEST_LENGTH]; // Массив для хэша
+    SHA1(reinterpret_cast<const unsigned char*>(combined.c_str()), combined.size(), hash);
+
     std::ostringstream oss;
     for (int i = 0; i < SHA_DIGEST_LENGTH; ++i) {
-        oss << std::hex << (hash[i] >> 4) << (hash[i] & 0xF);
+        oss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(hash[i]);
     }
     return oss.str();
 }
 
-bool ConnectToBase::authenticate(const std::string& login, const std::string& salt, const std::string& clientHash) {
-    auto it = users.find(login);
-    if (it == users.end()) return false;  // Логин не найден
+// Метод для аутентификации пользователя
+bool ConnectToBase::authenticate(const std::string& login, const std::string& salt, const std::string& hash) {
+    std::ifstream dbFile(dbFileName);
+    if (!dbFile.is_open()) return false;
 
-    std::string computedHash = hashPassword(it->second, salt);  // Хэшируем пароль с солью
-    return computedHash == clientHash;  // Сравниваем хэш с клиентским
+    std::string dbLogin, dbPassword;
+    while (dbFile >> dbLogin >> dbPassword) {
+        if (dbLogin == login) {
+            // Сравниваем хэш пароля с сохраненным значением
+            return hashPassword(dbPassword, salt) == hash;
+        }
+    }
+    return false; // Логин не найден в базе данных
 }
 

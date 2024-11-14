@@ -2,9 +2,6 @@
 
 Error::Error(Interface* logger) : logger(logger) {}
 
-void Error::report(const std::string& errorMessage, bool critical) {
-    if (logger) {
-        logger->logError(errorMessage, critical);
-    }
+void Error::report(const std::string& message, bool isCritical) {
+    logger->logError(message, isCritical);
 }
-

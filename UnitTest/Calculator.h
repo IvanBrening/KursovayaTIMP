@@ -1,8 +1,8 @@
 #ifndef CALCULATOR_H
 #define CALCULATOR_H
 
-#include <cstdint>
 #include <vector>
+#include <cstdint>
 
 class Calculator {
 public:

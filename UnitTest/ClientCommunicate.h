@@ -1,12 +1,12 @@
-#ifndef CLIENTCOMMUNICATE_H
-#define CLIENTCOMMUNICATE_H
+#ifndef CLIENT_COMMUNICATE_H
+#define CLIENT_COMMUNICATE_H
 
 #include <string>
 
 class ClientCommunicate {
 public:
-    bool parseMessage(const std::string& msg, std::string& login, std::string& salt, std::string& hash);
+    bool parseMessage(const std::string& message, std::string& login, std::string& salt, std::string& hash);
 };
 
-#endif // CLIENTCOMMUNICATE_H
+#endif // CLIENT_COMMUNICATE_H
 

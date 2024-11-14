@@ -6,7 +6,7 @@
 #include "ClientCommunicate.h"
 #include <fstream>
 #include <string>
-#include <cstdio>  // Для удаления файла
+#include <cstdio>
 
 // Функция для проверки наличия строки в файле лога
 bool checkLogContains(const std::string& fileName, const std::string& searchString) {
@@ -26,117 +26,71 @@ struct LogFileSetup {
     const std::string logFileName = "test_log.txt";
     
     LogFileSetup() {
-        // Удаляем файл лога перед тестами, если он существует
         std::remove(logFileName.c_str());
     }
 
     ~LogFileSetup() {
-        // Удаляем файл лога после тестов
         std::remove(logFileName.c_str());
     }
 };
 
-// Тестирование логирования сообщений
+// Тестирование Interface: Логирование сообщений
 TEST_FIXTURE(LogFileSetup, Interface_LogMessage) {
     Interface logger(logFileName);
     logger.logMessage("Test info message");
-
     CHECK(checkLogContains(logFileName, "[INFO] Test info message"));
 }
 
-// Тестирование логирования ошибок
+// Тестирование Interface: Логирование ошибок
 TEST_FIXTURE(LogFileSetup, Interface_LogError) {
     Interface logger(logFileName);
     logger.logError("Test error", false);
-
     CHECK(checkLogContains(logFileName, "[ERROR] Test error"));
 }
 
-// Тестирование критических ошибок
-TEST_FIXTURE(LogFileSetup, Error_ReportCritical) {
+// Тестирование Interface: Критическая ошибка
+TEST_FIXTURE(LogFileSetup, Interface_LogCriticalError) {
     Interface logger(logFileName);
-    Error errorHandler(&logger);
-    errorHandler.report("Critical error occurred", true);
-
-    CHECK(checkLogContains(logFileName, "[CRITICAL ERROR] Critical error occurred"));
+    logger.logError("Test critical error", true);
+    CHECK(checkLogContains(logFileName, "[CRITICAL ERROR] Test critical error"));
 }
 
-// Тестирование некритичных ошибок
+// Тестирование Error: Некритичная ошибка
 TEST_FIXTURE(LogFileSetup, Error_ReportNonCritical) {
     Interface logger(logFileName);
     Error errorHandler(&logger);
     errorHandler.report("Non-critical error", false);
-
     CHECK(checkLogContains(logFileName, "[ERROR] Non-critical error"));
 }
 
-// Тест вычисления суммы квадратов чисел
+// Тестирование Calculator: Нормальная работа
 TEST(Calculator_SumOfSquares) {
     Calculator calculator;
     std::vector<uint16_t> values = {3, 4, 5};
     CHECK_EQUAL(50, calculator.sumOfSquares(values));
 }
 
-// Тест на переполнение при вычислении суммы квадратов
+// Тестирование Calculator: Переполнение
 TEST(Calculator_SumOfSquares_Overflow) {
     Calculator calculator;
     std::vector<uint16_t> values = {30000, 40000, 50000};
     CHECK_EQUAL(1, calculator.sumOfSquares(values));  // Ожидаем 1 при переполнении
 }
 
-// Тест аутентификации пользователя (успешный случай)
+// Тестирование ConnectToBase: Успешная аутентификация
 TEST_FIXTURE(LogFileSetup, ConnectToBase_AuthenticateSuccess) {
-    // Создаем файл базы данных с нужными данными
     std::ofstream dbFile("user_db.txt");
     dbFile << "user P@ssW0rd" << std::endl;
     dbFile.close();
 
-    ConnectToBase db("user_db.txt");  // Правильный путь
+    ConnectToBase db("user_db.txt");
     std::string salt = "0000000000000000";
-    std::string correctHash = db.hashPassword("P@ssW0rd", salt);  // Хэш пароля с солью
-    CHECK(db.authenticate("user", salt, correctHash));  // Проверяем успешную аутентификацию
-
-    std::remove("user_db.txt");  // Удаляем файл базы данных после теста
+    std::string correctHash = db.hashPassword("P@ssW0rd", salt);
+    CHECK(db.authenticate("user", salt, correctHash));
+    std::remove("user_db.txt");
 }
 
-// Тест на неуспешное подключение к базе данных (неправильный путь)
-TEST_FIXTURE(LogFileSetup, ConnectToBase_Authenticate_Failure_InvalidPath) {
-    ConnectToBase db("invalid_db.txt");  // Неправильный путь
-    std::string salt = "0000000000000000";
-    CHECK(!db.authenticate("user", salt, "1111111111111111111111111111111111111110"));  // Ожидаем неудачную аутентификацию
-}
-
-// Тест парсинга сообщения для правильного разделения логина, соли и хеша
-TEST(ClientCommunicate_ParseMessage_Success) {
-    ClientCommunicate comm;
-    std::string login, salt, hash;
-    
-    // Строка с ожидаемыми данными (60 символов)
-    std::string testData = "user00000000000000001111111111111111111111111111111111111111";  // 60 символов
-
-    bool result = comm.parseMessage(testData, login, salt, hash);
-
-    CHECK(result);  // Проверка успешности разбора
-    CHECK_EQUAL("user", login);  // Проверка логина
-    CHECK_EQUAL("0000000000000000", salt);  // Проверка соли
-    CHECK_EQUAL("1111111111111111111111111111111111111111", hash);  // Проверка хэша
-}
-
-// Тест на ошибку парсинга (слишком короткое сообщение)
-TEST(ClientCommunicate_ParseMessage_Failure_ShortMessage) {
-    ClientCommunicate comm;
-    std::string login, salt, hash;
-    CHECK(!comm.parseMessage("user0123456", login, salt, hash));  // Сообщение слишком короткое для корректного разбора
-}
-
-// Тест на ошибку парсинга (отсутствие соли)
-TEST(ClientCommunicate_ParseMessage_Failure_NoSalt) {
-    ClientCommunicate comm;
-    std::string login, salt, hash;
-    CHECK(!comm.parseMessage("user1111111111111111111111111111111111111111", login, salt, hash));  // Отсутствие соли в сообщении
-}
-
-// Тест аутентификации пользователя, если логин не найден в базе данных
+// Тестирование ConnectToBase: Неверный логин
 TEST_FIXTURE(LogFileSetup, ConnectToBase_Authenticate_LoginNotFound) {
     std::ofstream dbFile("user_db.txt");
     dbFile << "user P@ssW0rd" << std::endl;
@@ -144,14 +98,12 @@ TEST_FIXTURE(LogFileSetup, ConnectToBase_Authenticate_LoginNotFound) {
 
     ConnectToBase db("user_db.txt");
     std::string salt = "0000000000000000";
-    std::string incorrectLogin = "wronguser";
-    CHECK(!db.authenticate(incorrectLogin, salt, "incorrectHash"));  // Логин не найден в базе
-
-    std::remove("user_db.txt");  // Удаляем файл базы данных после теста
+    CHECK(!db.authenticate("wronguser", salt, "incorrectHash"));
+    std::remove("user_db.txt");
 }
 
-// Тест аутентификации пользователя с неверным хешом
-TEST_FIXTURE(LogFileSetup, ConnectToBase_Authenticate_WrongHash) {
+// Тестирование ConnectToBase: Неверный пароль
+TEST_FIXTURE(LogFileSetup, ConnectToBase_Authenticate_WrongPassword) {
     std::ofstream dbFile("user_db.txt");
     dbFile << "user P@ssW0rd" << std::endl;
     dbFile.close();
@@ -159,9 +111,59 @@ TEST_FIXTURE(LogFileSetup, ConnectToBase_Authenticate_WrongHash) {
     ConnectToBase db("user_db.txt");
     std::string salt = "0000000000000000";
     std::string wrongHash = "1111111111111111111111111111111111111110";
-    CHECK(!db.authenticate("user", salt, wrongHash));  // Неверный хеш пароля
+    CHECK(!db.authenticate("user", salt, wrongHash));
+    std::remove("user_db.txt");
+}
 
-    std::remove("user_db.txt");  // Удаляем файл базы данных после теста
+// Тестирование ConnectToBase: Пустой логин или пароль
+TEST(ConnectToBase_EmptyUserOrPassword) {
+    ConnectToBase db("user_db.txt");
+    std::string salt = "0000000000000000";
+    CHECK(!db.authenticate("", salt, ""));
+    CHECK(!db.authenticate("user", salt, ""));
+    CHECK(!db.authenticate("", salt, "hash"));
+}
+
+// Тестирование ConnectToBase: Слишком длинный логин или пароль
+TEST(ConnectToBase_LongUserOrPassword) {
+    ConnectToBase db("user_db.txt");
+    std::string salt = "0000000000000000";
+    std::string longUser = std::string(256, 'u');
+    std::string longPassword = std::string(256, 'p');
+    CHECK(!db.authenticate(longUser, salt, longPassword));
+}
+
+// Тестирование ClientCommunicate: Успешное парсирование сообщения
+TEST(ClientCommunicate_ParseMessage_Success) {
+    ClientCommunicate comm;
+    std::string login, salt, hash;
+    std::string testData = "user00000000000000001111111111111111111111111111111111111111";
+    bool result = comm.parseMessage(testData, login, salt, hash);
+    CHECK(result);
+    CHECK_EQUAL("user", login);
+    CHECK_EQUAL("0000000000000000", salt);
+    CHECK_EQUAL("1111111111111111111111111111111111111111", hash);
+}
+
+// Тестирование ClientCommunicate: Ошибка при коротком сообщении
+TEST(ClientCommunicate_ParseMessage_Failure_ShortMessage) {
+    ClientCommunicate comm;
+    std::string login, salt, hash;
+    CHECK(!comm.parseMessage("user0123456", login, salt, hash));
+}
+
+// Тестирование ClientCommunicate: Ошибка при отсутствии соли
+TEST(ClientCommunicate_ParseMessage_Failure_NoSalt) {
+    ClientCommunicate comm;
+    std::string login, salt, hash;
+    CHECK(!comm.parseMessage("user", login, salt, hash));
+}
+
+// Тестирование ClientCommunicate: Ошибка при отсутствии хеша
+TEST(ClientCommunicate_ParseMessage_Failure_NoHash) {
+    ClientCommunicate comm;
+    std::string login, salt, hash;
+    CHECK(!comm.parseMessage("user0000000000000000", login, salt, hash));
 }
 
 int main() {

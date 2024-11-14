@@ -6,8 +6,8 @@
 
 class Error {
 public:
-    Error(Interface* logger);
-    void report(const std::string& errorMessage, bool critical = false);
+    explicit Error(Interface* logger);
+    void report(const std::string& message, bool isCritical);
 private:
     Interface* logger;
 };
