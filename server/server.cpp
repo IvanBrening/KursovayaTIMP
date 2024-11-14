@@ -125,7 +125,7 @@ private:
 class Interface {
 public:
     static void printUsage() {
-        std::cout << "Usage: ./server -l log_file -b user_db [-p port (default 22852)]\n";
+        std::cout << "Usage: ./server_app -l server/log_file -b server/user_data_base [-p port (default 22852)]\n";
     }
     static void logError(const std::string& logFileName, const std::string& message, bool isCritical) {
         std::ofstream logFile(logFileName, std::ios::app);
