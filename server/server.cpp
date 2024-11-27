@@ -64,9 +64,9 @@ public:
             uint32_t result;
             // Логика для определения результата в зависимости от переполнения
             if (overflowUp) {
-                result = 1; // Переполнение вверх
+                result = 65535; // Переполнение вверх
             } else if (sumOfSquares > UINT16_MAX) {
-                result = 65535; // Переполнение вниз
+                result = 1; // Переполнение вниз
             } else {
                 result = static_cast<uint32_t>(sumOfSquares);
             }
@@ -265,4 +265,3 @@ int main(int argc, char* argv[]) {
     close(server_fd); // Закрытие сервера
     return 0;
 }
-
