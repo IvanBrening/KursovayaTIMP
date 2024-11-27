@@ -173,7 +173,7 @@ public:
             send(socket, "OK", 2, 0); // Отправляем сообщение об успешной аутентификации
             Interface::logMessage(logFileName, "User " + login + " authenticated successfully.");
             Calculator calc;
-            if (calc.processVectors(socket) < 0) {
+            if (calc.processVectors(socket) != 0) {
                 Interface::logError(logFileName, "Error processing vectors.", false);
             }
         } else {
