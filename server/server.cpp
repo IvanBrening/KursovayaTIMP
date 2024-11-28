@@ -201,10 +201,23 @@ int main(int argc, char* argv[]) {
         } else if (std::string(argv[i]) == "-b") {
             userDb = argv[++i];
         } else if (std::string(argv[i]) == "-p") {
-            port = std::stoi(argv[++i]);
+            try {
+                port = std::stoi(argv[++i]);
+                if (port <= 0 || port > 65535) {
+                    throw std::out_of_range("Port out of range");
+                }
+            } catch (const std::invalid_argument&) {
+                std::cerr << "Critical Error: Invalid port value \"" << argv[i]
+                          << "\". Please specify a valid port number (1-65535)." << std::endl;
+                return -1;
+            } catch (const std::out_of_range&) {
+                std::cerr << "Critical Error: Port value \"" << argv[i]
+                          << "\" is out of range. Please specify a valid port number (1-65535)." << std::endl;
+                return -1;
+            }
         } else {
             Interface::printUsage();
-            return 1; // Если аргументы не распознаны, выводим использование
+            return 1; // Если аргументы не распознаны
         }
     }
 
