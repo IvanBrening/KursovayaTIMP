@@ -125,7 +125,7 @@ private:
 class Interface {
 public:
     static void printUsage() {
-        std::cout << "Usage: ./server_app -l server/log_file -b server/user_data_base [-p port (default 22852)]\n";
+        std::cout << "Usage: ./server -l log_file -b user_data_base [-p port (default 33333)]\n";
     }
     static void logError(const std::string& logFileName, const std::string& message, bool isCritical) {
         std::ofstream logFile(logFileName, std::ios::app);
@@ -192,7 +192,7 @@ int main(int argc, char* argv[]) {
 
     std::string logFile;
     std::string userDb;
-    int port = 22852;  // Значение порта по умолчанию
+    int port = 33333;  // Значение порта по умолчанию
 
     // Обработка аргументов командной строки
     for (int i = 1; i < argc; ++i) {
