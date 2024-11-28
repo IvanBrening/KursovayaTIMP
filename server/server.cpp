@@ -208,6 +208,15 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // Проверка наличия базы данных
+    std::ifstream dbFile(userDb);
+    if (!dbFile.is_open()) {
+        std::cerr << "Critical Error: Cannot open database file: " << userDb << std::endl;
+        Interface::logError(logFile, "Cannot open database file: " + userDb, true);
+        return -1; // Ошибка при открытии базы данных
+    }
+    dbFile.close(); // Закрываем файл базы данных, так как проверка завершена
+
     int server_fd, new_socket;
     struct sockaddr_in address;
     int opt = 1;
@@ -265,3 +274,4 @@ int main(int argc, char* argv[]) {
     close(server_fd); // Закрытие сервера
     return 0;
 }
+
