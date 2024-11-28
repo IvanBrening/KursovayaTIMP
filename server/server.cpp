@@ -208,6 +208,14 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // Проверка наличия лог-файла
+    std::ofstream logTest(logFile, std::ios::app);
+    if (!logTest.is_open()) {
+        std::cerr << "Critical Error: Cannot open log file: " << logFile << std::endl;
+        return -1; // Ошибка при доступе к лог-файлу
+    }
+    logTest.close(); // Закрываем файл после проверки
+
     // Проверка наличия базы данных
     std::ifstream dbFile(userDb);
     if (!dbFile.is_open()) {
@@ -274,4 +282,3 @@ int main(int argc, char* argv[]) {
     close(server_fd); // Закрытие сервера
     return 0;
 }
-
