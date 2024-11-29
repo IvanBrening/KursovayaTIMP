@@ -1,12 +1,4 @@
 /**
- * @file server.cpp
- * @brief Сервер курсовой работы.
- * 
- * Серверная часть программы, предназначенная для:
- * - Аутентификации пользователей на основе логина и пароля.
- * - Получения векторов от клиента и выполнения над ними вычислений.
- * - Логирования операций и ошибок.
- * 
  * @author Бренинг И. А.
  */
 
@@ -27,17 +19,13 @@
 #include <cstring>
 
 // Класс для обработки ошибок
-/**
- * @class Error
- * @brief Класс для обработки ошибок в приложении.
- */
 class Error {
 public:
     /**
-     * @brief Логирует ошибку в консоль.
-     * 
+     * Логирует ошибку в стандартный поток ошибок.
+     *
      * @param message Сообщение об ошибке.
-     * @param isCritical Указывает, является ли ошибка критической.
+     * @param isCritical Флаг, указывающий, является ли ошибка критической.
      */
     static void logError(const std::string& message, bool isCritical = false) {
         std::cerr << (isCritical ? "Critical Error: " : "Error: ") << message << std::endl;
@@ -45,17 +33,13 @@ public:
 };
 
 // Класс для вычислений
-/**
- * @class Calculator
- * @brief Класс для выполнения вычислений с векторами, полученными от клиента.
- */
 class Calculator {
 public:
     /**
-     * @brief Обрабатывает векторы, полученные от клиента.
-     * 
-     * @param socket Дескриптор сокета, через который происходит взаимодействие с клиентом.
-     * @return 0 в случае успешной обработки, -1 в случае ошибки.
+     * Обрабатывает векторы, полученные от клиента, вычисляет суммы квадратов элементов и отправляет результат.
+     *
+     * @param socket Сокет для общения с клиентом.
+     * @return Статус выполнения (0 - успех, -1 - ошибка).
      */
     uint16_t processVectors(int socket) {
         uint32_t numberOfVectors;
@@ -112,20 +96,16 @@ public:
 };
 
 // Класс для подключения к базе данных
-/**
- * @class ConnectToBase
- * @brief Класс для аутентификации пользователей, используя данные из базы.
- */
 class ConnectToBase {
 public:
     /**
-     * @brief Аутентифицирует пользователя, проверяя логин и хэш пароля.
-     * 
+     * Аутентифицирует пользователя на основе логина, соли и хэша пароля.
+     *
      * @param login Логин пользователя.
-     * @param salt Соль, используемая для хэширования пароля.
-     * @param clientHash Хэш пароля, присланный клиентом.
+     * @param salt Соль, используемая при хэшировании пароля.
+     * @param clientHash Хэш пароля, полученный от клиента.
      * @param dbFileName Имя файла базы данных пользователей.
-     * @return true, если аутентификация успешна; false в противном случае.
+     * @return true, если аутентификация прошла успешно; иначе false.
      */
     bool authenticateUser(const std::string& login, const std::string& salt, const std::string& clientHash, const std::string& dbFileName) {
         std::ifstream dbFile(dbFileName);
@@ -133,7 +113,8 @@ public:
             Error::logError("Cannot open database file.", true);
             return false;
         }
-std::string dbLogin, dbPassword;
+
+        std::string dbLogin, dbPassword;
         while (dbFile >> dbLogin >> dbPassword) {
             if (dbLogin == login) {
                 std::string serverHash = hashPassword(dbPassword, salt);
@@ -142,14 +123,13 @@ std::string dbLogin, dbPassword;
         }
         return false; // Если не нашли пользователя
     }
-
 private:
     /**
-     * @brief Хэширует пароль с использованием соли.
-     * 
+     * Хэширует пароль с использованием соли.
+     *
      * @param password Пароль пользователя.
-     * @param salt Соль.
-     * @return Хэшированный пароль в виде строки.
+     * @param salt Соль, которая используется в процессе хэширования.
+     * @return Хэш пароля с солью.
      */
     std::string hashPassword(const std::string& password, const std::string& salt) {
         std::string data = salt + password;
@@ -164,11 +144,11 @@ private:
     }
 
     /**
-     * @brief Сравнивает два хэша паролей.
-     * 
-     * @param serverHash Хэш, полученный сервером.
-     * @param clientHash Хэш, полученный от клиента.
-     * @return true, если хэши совпадают; false в противном случае.
+     * Сравнивает два хэша паролей.
+     *
+     * @param serverHash Хэш пароля на сервере.
+     * @param clientHash Хэш пароля, полученный от клиента.
+     * @return true, если хэши совпадают; иначе false.
      */
     bool compareHashes(const std::string& serverHash, const std::string& clientHash) {
         std::string clientHashLower = clientHash;
@@ -180,25 +160,21 @@ private:
 };
 
 // Класс для работы с интерфейсом (логирование, использование)
-/**
- * @class Interface
- * @brief Класс для вывода информации о правильном использовании программы и логирования.
- */
 class Interface {
 public:
     /**
-     * @brief Выводит информацию о правильном использовании программы.
+     * Выводит инструкцию по использованию программы.
      */
     static void printUsage() {
-        std::cout << "Usage: ./server_app -l server/log_file -b server/user_data_base [-p port (default 22852)]\n";
+        std::cout << "Usage: ./server -l log_file -b user_data_base [-p port (default 33333)]\n";
     }
 
     /**
-     * @brief Логирует ошибку в файл.
-     * 
+     * Логирует ошибку в указанный лог-файл.
+     *
      * @param logFileName Имя лог-файла.
      * @param message Сообщение об ошибке.
-     * @param isCritical Указывает, является ли ошибка критической.
+     * @param isCritical Флаг, указывающий, является ли ошибка критической.
      */
     static void logError(const std::string& logFileName, const std::string& message, bool isCritical) {
         std::ofstream logFile(logFileName, std::ios::app);
@@ -211,8 +187,8 @@ public:
     }
 
     /**
-     * @brief Логирует информационное сообщение в файл.
-     * 
+     * Логирует информационное сообщение в указанный лог-файл.
+     *
      * @param logFileName Имя лог-файла.
      * @param message Информационное сообщение.
      */
@@ -226,18 +202,14 @@ public:
     }
 };
 // Класс для взаимодействия с клиентом
-/**
- * @class ClientCommunicate
- * @brief Класс для обработки общения с клиентом.
- */
 class ClientCommunicate {
 public:
     /**
-     * @brief Обрабатывает запросы клиента, включая аутентификацию и вычисления.
-     * 
-     * @param socket Дескриптор сокета для взаимодействия с клиентом.
+     * Обрабатывает взаимодействие с клиентом: получает данные, аутентифицирует пользователя и выполняет вычисления.
+     *
+     * @param socket Сокет для общения с клиентом.
      * @param userDbFileName Имя файла базы данных пользователей.
-     * @param logFileName Имя файла для логирования.
+     * @param logFileName Имя файла журнала для логирования.
      */
     void communicate(int socket, const std::string& userDbFileName, const std::string& logFileName) {
         char buffer[256] = {0};
@@ -273,9 +245,6 @@ public:
 };
 
 // Основная программа
-/**
- * @brief Основная программа сервера, принимающая подключения и обрабатывающая запросы клиентов.
- */
 int main(int argc, char* argv[]) {
     if (argc < 5) {
         Interface::printUsage();
@@ -284,7 +253,7 @@ int main(int argc, char* argv[]) {
 
     std::string logFile;
     std::string userDb;
-    int port = 22852;  // Значение порта по умолчанию
+    int port = 33333;  // Значение порта по умолчанию
 
     // Обработка аргументов командной строки
     for (int i = 1; i < argc; ++i) {
@@ -293,12 +262,41 @@ int main(int argc, char* argv[]) {
         } else if (std::string(argv[i]) == "-b") {
             userDb = argv[++i];
         } else if (std::string(argv[i]) == "-p") {
-            port = std::stoi(argv[++i]);
+            try {
+                port = std::stoi(argv[++i]);
+                if (port <= 0 || port > 65535) {
+                    throw std::out_of_range("Port out of range");
+                }
+            } catch (const std::invalid_argument&) {
+                std::cerr << "Critical Error: Invalid port value \"" << argv[i]
+                          << "\". Please specify a valid port number (1-65535)." << std::endl;
+                return -1;
+            } catch (const std::out_of_range&) {
+                std::cerr << "Critical Error: Port value \"" << argv[i]
+                          << "\" is out of range. Please specify a valid port number (1-65535)." << std::endl;
+                return -1;
+            }
         } else {
             Interface::printUsage();
-            return 1; // Если аргументы не распознаны, выводим использование
+            return 1; // Если аргументы не распознаны
         }
     }
+
+    // Проверка наличия лог-файла
+    std::ofstream logTest(logFile, std::ios::app);
+    if (!logTest.is_open()) {
+        std::cerr << "Critical Error: Cannot open log file: " << logFile << std::endl;
+        return -1; // Ошибка при доступе к лог-файлу
+    }
+    logTest.close(); // Закрываем файл после проверки
+// Проверка наличия базы данных
+    std::ifstream dbFile(userDb);
+    if (!dbFile.is_open()) {
+        std::cerr << "Critical Error: Cannot open database file: " << userDb << std::endl;
+        Interface::logError(logFile, "Cannot open database file: " + userDb, true);
+        return -1; // Ошибка при открытии базы данных
+    }
+    dbFile.close(); // Закрываем файл базы данных, так как проверка завершена
 
     int server_fd, new_socket;
     struct sockaddr_in address;
@@ -333,7 +331,8 @@ int main(int argc, char* argv[]) {
         Interface::logError(logFile, "Listen error", true);
         return -1; // Ошибка начала прослушивания
     }
-std::cout << "Server started on port " << port << std::endl;
+
+    std::cout << "Server started on port " << port << std::endl;
     Interface::logMessage(logFile, "Server started on port " + std::to_string(port));
 
     // Основной цикл ожидания подключения клиентов
