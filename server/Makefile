@@ -1,24 +1,49 @@
-# Имя исполняемого файла
-TARGET = server
-
-# Компилятор и флаги
+# Compiler
 CXX = g++
-CXXFLAGS = -Wall -Wextra -std=c++17 -O2
-LDFLAGS = -lssl -lcrypto
 
-# Исходные файлы
-SRC = server.cpp
+# Compiler flags
+CXXFLAGS = -std=c++11 -Wall -g
 
-# Цель по умолчанию
-all: $(TARGET)
+# Libraries
+LIBS = -lssl -lcrypto
 
-# Сборка целевого исполняемого файла напрямую из исходного
-$(TARGET):
-	$(CXX) $(CXXFLAGS) -o $(TARGET) $(SRC) $(LDFLAGS)
+# UnitTest++ library
+UNITTEST_LIBS = -lUnitTest++
 
-# Удаление исполняемого файла
+# Source files for the main executable
+SRCS = main.cpp Calculator.cpp ClientCommunicate.cpp Interface.cpp Error.cpp ConnectToBase.cpp
+
+
+# Source files for tests
+TEST_SRCS = tests.cpp Calculator.cpp ClientCommunicate.cpp Interface.cpp Error.cpp ConnectToBase.cpp
+
+
+# Header files
+HDRS = Calculator.h ClientCommunicate.h Interface.h Error.h ConnectToBase.h
+
+# Executable name
+EXECUTABLE = server
+
+# Test executable name
+TEST_EXECUTABLE = tests
+
+# Default target
+all: $(EXECUTABLE)
+
+# Rule to compile the main program
+$(EXECUTABLE): $(SRCS) $(HDRS)
+	$(CXX) $(CXXFLAGS) $(SRCS) -o $(EXECUTABLE) $(LIBS)
+
+# Rule to compile the test program
+test: $(TEST_SRCS) $(HDRS)
+	$(CXX) $(CXXFLAGS) $(TEST_SRCS) -o $(TEST_EXECUTABLE) $(LIBS) $(UNITTEST_LIBS)
+
+# Rule to run tests
+run_test: test
+	./$(TEST_EXECUTABLE)
+
+# Clean rule
 clean:
-	rm -f $(TARGET)
+	rm -f $(EXECUTABLE) $(TEST_EXECUTABLE)
 
-# Упрощение команд
-.PHONY: all clean
+.PHONY: all test run_test clean
